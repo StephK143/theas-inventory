@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Thea's Inventory</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <header class="masthead">
+        <div class="masthead-text">
+          <h1>Thea's Inventory</h1>
+          <p>Count your stuff. Make a chart. Write it up like a real scientist.</p>
+        </div>
+        <div class="masthead-actions">
+          <span id="mode-badge" class="badge">Loading…</span>
+          <button id="print-btn" class="btn btn-pink">Print my report</button>
+        </div>
+      </header>
+
+      <nav class="tabstrip" aria-label="Inventory lists">
+        <div id="tabs" class="tabs"></div>
+        <button id="add-tab" class="tab-add" title="Add a new list">+ New list</button>
+      </nav>
+
+      <main class="layout">
+        <section class="panel list-panel">
+          <div class="panel-head">
+            <h2 id="list-title">My list</h2>
+            <span id="list-total" class="pill"></span>
+          </div>
+
+          <table class="inventory">
+            <thead>
+              <tr>
+                <th class="col-name">Thing</th>
+                <th class="col-count">How many</th>
+                <th class="col-note">Notes</th>
+                <th class="col-kill"><span class="sr-only">Remove</span></th>
+              </tr>
+            </thead>
+            <tbody id="items"></tbody>
+          </table>
+
+          <form id="add-item" class="add-row">
+            <input
+              id="new-item"
+              type="text"
+              placeholder="Add something new…"
+              autocomplete="off"
+              maxlength="60"
+            />
+            <button type="submit" class="btn btn-blue">Add</button>
+          </form>
+        </section>
+
+        <div class="right-column">
+          <section class="panel chart-panel">
+            <div class="panel-head">
+              <h2>Pick a chart</h2>
+              <select id="chart-picker" aria-label="Chart type"></select>
+            </div>
+            <p id="chart-blurb" class="blurb"></p>
+            <div class="chart-frame">
+              <canvas id="chart"></canvas>
+              <p id="chart-empty" class="empty" hidden>
+                Add a few things to your list and your chart will show up here.
+              </p>
+            </div>
+          </section>
+
+          <section class="panel report-panel">
+            <div class="panel-head">
+              <h2>Inventory report</h2>
+              <span class="stamp">Official</span>
+            </div>
+
+            <form id="report-form" class="report-form">
+              <label>
+                Subject
+                <input id="report-subject" type="text" placeholder="What is this report about?" />
+              </label>
+              <label>
+                Author
+                <input id="report-author" type="text" placeholder="Your name" />
+              </label>
+              <label class="wide">
+                Notes &amp; findings
+                <textarea
+                  id="report-notes"
+                  rows="4"
+                  placeholder="What did you notice? Anything surprising?"
+                ></textarea>
+              </label>
+              <button type="submit" class="btn btn-blue">Save report</button>
+            </form>
+
+            <ul id="report-list" class="report-list"></ul>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div id="print-sheet" aria-hidden="true"></div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
