@@ -40,11 +40,26 @@ function renderTabs() {
     .join('');
 }
 
+// Bumped on every tab switch. A slow fetch for a tab she already clicked away
+// from would otherwise land last and paint the wrong list.
+let loadToken = 0;
+
 async function selectTab(tabId) {
+  const token = ++loadToken;
   state.activeTabId = tabId;
+  state.items = [];
+  state.history = [];
+  state.reports = [];
   if (tabId) localStorage.setItem('theas-inventory:tab', tabId);
-  await loadTabData();
+
   renderTabs();
+  renderItems();
+  renderChart();
+
+  if (!tabId) return;
+  await loadTabData();
+  if (token !== loadToken) return;
+
   renderItems();
   renderReports();
   prefillReportForm();
@@ -52,15 +67,14 @@ async function selectTab(tabId) {
 }
 
 async function loadTabData() {
-  if (!state.activeTabId) {
-    state.items = [];
-    state.history = [];
-    state.reports = [];
-    return;
-  }
-  state.items = await state.store.listItems(state.activeTabId);
-  state.history = await state.store.listHistory(state.items.map((item) => item.id));
-  state.reports = await state.store.listReports(state.activeTabId);
+  const items = await state.store.listItems(state.activeTabId);
+  const [history, reports] = await Promise.all([
+    state.store.listHistory(items.map((item) => item.id)),
+    state.store.listReports(state.activeTabId),
+  ]);
+  state.items = items;
+  state.history = history;
+  state.reports = reports;
 }
 
 /* ---------- items ---------- */

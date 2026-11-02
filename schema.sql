@@ -46,20 +46,35 @@ create table if not exists thea_reports (
 
 create index if not exists thea_reports_tab_id_idx on thea_reports(tab_id);
 
+create or replace function thea_touch_updated_at() returns trigger
+language plpgsql as $$
+begin
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+-- Logging has to run AFTER the row is written, otherwise thea_count_log's
+-- foreign key points at an item that does not exist yet.
 create or replace function thea_log_count() returns trigger
 language plpgsql as $$
 begin
   if tg_op = 'INSERT' or new.count is distinct from old.count then
     insert into thea_count_log (item_id, count) values (new.id, new.count);
   end if;
-  new.updated_at := now();
-  return new;
+  return null;
 end;
 $$;
 
 drop trigger if exists thea_items_log_count on thea_items;
+drop trigger if exists thea_items_touch on thea_items;
+
+create trigger thea_items_touch
+  before update on thea_items
+  for each row execute function thea_touch_updated_at();
+
 create trigger thea_items_log_count
-  before insert or update on thea_items
+  after insert or update on thea_items
   for each row execute function thea_log_count();
 
 -- Open access: no login, anyone with the link can read and write these four

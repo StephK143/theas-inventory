@@ -13,19 +13,18 @@ Open `index.html` in a browser, or serve the folder:
 python3 -m http.server 4173   # then visit http://localhost:4173
 ```
 
-Until Supabase is configured the page runs in **practice mode** and saves to
-`localStorage`, so everything works offline and nothing is lost by poking at it.
+## Supabase
 
-## Connecting Supabase
+Already connected to the `theas-inventory` project, with `schema.sql` applied
+and the keys in `config.js`. The badge in the top right reads "Saved to the
+cloud" when it connects; if Supabase can't be reached the page falls back to
+browser storage rather than breaking. Blanking out `config.js` forces that
+**practice mode** on purpose, which is handy for experimenting without
+touching real data.
 
-1. Run `schema.sql` in the Supabase dashboard under **SQL Editor -> New query**.
-   It creates four `thea_` prefixed tables and opens them to anonymous access.
-2. Copy the project URL and anon key from **Project Settings -> API** into
-   `config.js`.
-
-The badge in the top right flips to "Saved to the cloud" once it connects. If
-Supabase can't be reached the page falls back to browser storage rather than
-breaking.
+To rebuild the database from scratch, re-run `schema.sql` in the dashboard
+under **SQL Editor -> New query**. It is idempotent, so running it twice is
+harmless.
 
 ## Publishing to GitHub Pages
 
@@ -39,7 +38,7 @@ The repo must be public on a free GitHub plan. Then under
 | ---------------- | --------------------------------------------------------- |
 | `thea_tabs`      | One row per list across the top, with its accent colour   |
 | `thea_items`     | The things being counted, belonging to a tab              |
-| `thea_count_log` | A row per count change, written by a database trigger     |
+| `thea_count_log` | A row per count change, written by an after-insert trigger |
 | `thea_reports`   | Saved write-ups, one list's worth at a time               |
 
 `thea_count_log` is what makes the over-time charts possible. Bar, pie,
