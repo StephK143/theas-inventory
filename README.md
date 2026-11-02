@@ -45,12 +45,33 @@ The repo must be public on a free GitHub plan. Then under
 doughnut, polar, radar and bubble charts read current counts; line, area and
 scatter read the log.
 
+## Long lists
+
+Lists are built to handle a hundred items or more. The inventory table scrolls
+with a sticky header, and the second dropdown above the chart picks how many
+things to plot, defaulting to the biggest ten. Share-style charts (pie,
+doughnut, polar, radar, bubble) roll the remainder into a grey "Everything
+else" slice so the total stays truthful; the others just show the top slice of
+the list and say how many are hidden. Sideways bars grow taller a row at a
+time, so "Show all" with 120 items is a tall readable chart rather than 120
+slivers.
+
 ## Adding a chart type
 
 Append an entry to `CHART_TYPES` in `charts.js` with an `id`, a `label`, a
 kid-readable `blurb`, and a `build(items, history)` that returns a Chart.js
-config. Set `overTime: true` if it needs the log. The dropdown and the empty
-state pick it up automatically.
+config. The dropdown and empty state pick it up automatically. Optional keys:
+
+- `overTime: true` if it reads `thea_count_log` rather than current counts
+- `grouping: 'other' | 'drop'` for how to handle items beyond the chosen limit
+- `height(count)` to grow the canvas for long lists
+
+## When saving fails
+
+Every database call has a 12 second timeout and reports failure as a pink
+message along the bottom of the screen. Buttons disable while a save is in
+flight, which matters because the original silent-failure bug let repeated
+clicks insert the same row several times over.
 
 ## A note on access
 

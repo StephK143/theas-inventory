@@ -1,5 +1,5 @@
 import { openStore, seedIfEmpty } from './db.js';
-import { CHART_TYPES, PALETTE } from './charts.js';
+import { CHART_TYPES, PALETTE, prepareItems } from './charts.js';
 
 const el = (id) => document.getElementById(id);
 const escape = (text) =>
@@ -16,12 +16,52 @@ const state = {
   reports: [],
   activeTabId: null,
   chartType: CHART_TYPES[0].id,
+  chartLimit: 10,
 };
 
 let chart = null;
 
 const activeTab = () => state.tabs.find((tab) => tab.id === state.activeTabId);
 const total = () => state.items.reduce((sum, item) => sum + item.count, 0);
+
+// Position from the highest existing row rather than the row count, so a
+// failed save can't leave two items fighting over the same slot.
+const nextSortOrder = () =>
+  state.items.reduce((highest, item) => Math.max(highest, item.sort_order ?? 0), -1) + 1;
+
+let toastTimer = null;
+
+function showToast(message, kind = 'info') {
+  const toast = el('toast');
+  toast.textContent = message;
+  toast.dataset.kind = kind;
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.hidden = true;
+  }, kind === 'error' ? 7000 : 2800);
+}
+
+// Browsers phrase a dropped connection as "TypeError: Failed to fetch", which
+// means nothing to a kid.
+function friendly(error) {
+  const text = error?.message || 'something went wrong';
+  return /failed to fetch|networkerror|load failed|network request failed/i.test(text)
+    ? 'the internet connection dropped'
+    : text;
+}
+
+// Nothing in here used to report failure, so a dropped request looked exactly
+// like a no-op and she would just click again.
+async function save(description, work) {
+  try {
+    return { ok: true, value: await work() };
+  } catch (error) {
+    console.error(description, error);
+    showToast(`Couldn't ${description} — ${friendly(error)}. Nothing was lost, try again.`, 'error');
+    return { ok: false };
+  }
+}
 
 /* ---------- tabs ---------- */
 
@@ -57,8 +97,8 @@ async function selectTab(tabId) {
   renderChart();
 
   if (!tabId) return;
-  await loadTabData();
-  if (token !== loadToken) return;
+  const loaded = await save(`open "${activeTab()?.name ?? 'that list'}"`, loadTabData);
+  if (token !== loadToken || !loaded.ok) return;
 
   renderItems();
   renderReports();
@@ -67,9 +107,9 @@ async function selectTab(tabId) {
 }
 
 async function loadTabData() {
-  const items = await state.store.listItems(state.activeTabId);
-  const [history, reports] = await Promise.all([
-    state.store.listHistory(items.map((item) => item.id)),
+  const [items, history, reports] = await Promise.all([
+    state.store.listItems(state.activeTabId),
+    state.store.listHistory(state.activeTabId),
     state.store.listReports(state.activeTabId),
   ]);
   state.items = items;
@@ -108,10 +148,23 @@ async function setCount(itemId, next) {
   const count = Math.max(0, Math.round(Number(next) || 0));
   if (count === item.count) return;
 
+  const previous = item.count;
   item.count = count;
-  await state.store.updateItem(itemId, { count });
-  state.history.push({ item_id: itemId, count, recorded_at: new Date().toISOString() });
   el('list-total').textContent = `${total()} total`;
+  renderChart();
+
+  const result = await save(`save ${item.name}`, () =>
+    state.store.updateItem(itemId, { count }),
+  );
+
+  if (!result.ok) {
+    item.count = previous;
+    renderItems();
+    renderChart();
+    return;
+  }
+
+  state.history.push({ item_id: itemId, count, recorded_at: new Date().toISOString() });
   renderChart();
 }
 
@@ -128,13 +181,23 @@ function renderChart() {
 
   chart?.destroy();
   chart = null;
-  if (nothingToShow) return;
 
-  const config = definition.build(state.items, state.history);
+  if (nothingToShow) {
+    el('chart-note').textContent = '';
+    el('chart-frame').style.height = '300px';
+    return;
+  }
+
+  const { items, note } = prepareItems(definition, state.items, state.chartLimit);
+  el('chart-note').textContent = note;
+  el('chart-frame').style.height = `${definition.height?.(items.length) ?? 300}px`;
+
+  const config = definition.build(items, state.history);
   config.options = {
     responsive: true,
     maintainAspectRatio: false,
-    animation: { duration: 500 },
+    // Long lists redraw often enough that the animation becomes a drag.
+    animation: { duration: items.length > 30 ? 0 : 500 },
     ...config.options,
   };
   chart = new Chart(el('chart'), config);
@@ -247,7 +310,9 @@ function wireEvents() {
     if (event.target.classList.contains('kill')) {
       const tab = state.tabs.find((row) => row.id === host.dataset.id);
       if (!confirm(`Delete the "${tab.name}" list and everything in it?`)) return;
-      await state.store.deleteTab(tab.id);
+      const result = await save(`delete "${tab.name}"`, () => state.store.deleteTab(tab.id));
+      if (!result.ok) return;
+
       state.tabs = state.tabs.filter((row) => row.id !== tab.id);
       await selectTab(state.tabs[0]?.id ?? null);
       return;
@@ -260,7 +325,11 @@ function wireEvents() {
     if (!event.target.classList.contains('tab-rename')) return;
     const id = event.target.closest('.tab').dataset.id;
     const name = event.target.value.trim() || 'Untitled';
-    await state.store.updateTab(id, { name });
+    const result = await save(`rename that list to "${name}"`, () =>
+      state.store.updateTab(id, { name }),
+    );
+    if (!result.ok) return;
+
     state.tabs.find((tab) => tab.id === id).name = name;
     renderTabs();
     renderItems();
@@ -269,27 +338,50 @@ function wireEvents() {
   el('add-tab').addEventListener('click', async () => {
     const name = prompt('What should this list be called?');
     if (!name?.trim()) return;
-    const tab = await state.store.createTab(
-      name.trim(),
-      PALETTE[state.tabs.length % PALETTE.length],
-      state.tabs.length,
+
+    const result = await save(`make the "${name.trim()}" list`, () =>
+      state.store.createTab(
+        name.trim(),
+        PALETTE[state.tabs.length % PALETTE.length],
+        state.tabs.length,
+      ),
     );
-    state.tabs.push(tab);
-    await selectTab(tab.id);
+    if (!result.ok) return;
+
+    state.tabs.push(result.value);
+    await selectTab(result.value.id);
   });
 
   el('add-item').addEventListener('submit', async (event) => {
     event.preventDefault();
     const field = el('new-item');
+    const button = el('add-item').querySelector('button');
     const name = field.value.trim();
-    if (!name || !state.activeTabId) return;
+    if (!name || !state.activeTabId || button.disabled) return;
 
-    const item = await state.store.createItem(state.activeTabId, name, state.items.length);
-    state.items.push(item);
-    state.history.push({ item_id: item.id, count: 0, recorded_at: item.created_at });
+    // Locked while the save is in flight. Without this, a slow connection
+    // invites repeat clicks and each one inserts another duplicate row.
+    button.disabled = true;
+    button.textContent = 'Saving…';
+
+    const result = await save(`add "${name}"`, () =>
+      state.store.createItem(state.activeTabId, name, nextSortOrder()),
+    );
+
+    button.disabled = false;
+    button.textContent = 'Add';
+
+    if (!result.ok) {
+      field.focus();
+      return;
+    }
+
+    state.items.push(result.value);
+    state.history.push({ item_id: result.value.id, count: 0, recorded_at: result.value.created_at });
     field.value = '';
     renderItems();
     renderChart();
+    field.focus();
   });
 
   el('items').addEventListener('click', async (event) => {
@@ -306,8 +398,11 @@ function wireEvents() {
     }
 
     if (event.target.classList.contains('row-kill')) {
-      await state.store.deleteItem(id);
-      state.items = state.items.filter((item) => item.id !== id);
+      const item = state.items.find((row) => row.id === id);
+      const result = await save(`remove ${item.name}`, () => state.store.deleteItem(id));
+      if (!result.ok) return;
+
+      state.items = state.items.filter((row) => row.id !== id);
       state.history = state.history.filter((entry) => entry.item_id !== id);
       renderItems();
       renderChart();
@@ -326,14 +421,18 @@ function wireEvents() {
 
     if (event.target.classList.contains('item-name')) {
       const name = event.target.value.trim() || 'New thing';
-      await state.store.updateItem(id, { name });
+      const result = await save(`rename to "${name}"`, () =>
+        state.store.updateItem(id, { name }),
+      );
+      if (!result.ok) return;
       state.items.find((item) => item.id === id).name = name;
       renderChart();
     }
 
     if (event.target.classList.contains('item-note')) {
       const note = event.target.value.trim() || null;
-      await state.store.updateItem(id, { note });
+      const result = await save('save that note', () => state.store.updateItem(id, { note }));
+      if (!result.ok) return;
       state.items.find((item) => item.id === id).note = note;
     }
   });
@@ -344,24 +443,45 @@ function wireEvents() {
     renderChart();
   });
 
+  el('chart-limit').addEventListener('change', (event) => {
+    state.chartLimit = Number(event.target.value);
+    localStorage.setItem('theas-inventory:limit', String(state.chartLimit));
+    renderChart();
+  });
+
   el('report-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!state.activeTabId) return;
 
-    const report = await state.store.createReport({
-      tab_id: state.activeTabId,
-      subject: el('report-subject').value.trim() || null,
-      author: el('report-author').value.trim() || null,
-      notes: el('report-notes').value.trim() || null,
-    });
-    state.reports.unshift(report);
+    const button = el('report-form').querySelector('button');
+    if (button.disabled) return;
+    button.disabled = true;
+    button.textContent = 'Saving…';
+
+    const result = await save('save that report', () =>
+      state.store.createReport({
+        tab_id: state.activeTabId,
+        subject: el('report-subject').value.trim() || null,
+        author: el('report-author').value.trim() || null,
+        notes: el('report-notes').value.trim() || null,
+      }),
+    );
+
+    button.disabled = false;
+    button.textContent = 'Save report';
+    if (!result.ok) return;
+
+    state.reports.unshift(result.value);
     renderReports();
+    showToast('Report saved!');
   });
 
   el('report-list').addEventListener('click', async (event) => {
     if (!event.target.classList.contains('row-kill')) return;
     const id = event.target.closest('li').dataset.id;
-    await state.store.deleteReport(id);
+    const result = await save('delete that report', () => state.store.deleteReport(id));
+    if (!result.ok) return;
+
     state.reports = state.reports.filter((report) => report.id !== id);
     renderReports();
   });
@@ -386,15 +506,23 @@ async function start() {
   el('chart-picker').innerHTML = CHART_TYPES.map(
     (type) => `<option value="${type.id}">${escape(type.label)}</option>`,
   ).join('');
-  state.chartType = localStorage.getItem('theas-inventory:chart') || state.chartType;
+  const storedType = localStorage.getItem('theas-inventory:chart');
+  if (CHART_TYPES.some((type) => type.id === storedType)) state.chartType = storedType;
   el('chart-picker').value = state.chartType;
 
-  state.tabs = await seedIfEmpty(state.store, PALETTE);
+  const storedLimit = localStorage.getItem('theas-inventory:limit');
+  if (storedLimit !== null) state.chartLimit = Number(storedLimit);
+  el('chart-limit').value = String(state.chartLimit);
+
+  wireEvents();
+
+  const seeded = await save('load your lists', () => seedIfEmpty(state.store, PALETTE));
+  if (!seeded.ok) return;
+  state.tabs = seeded.value;
 
   const remembered = localStorage.getItem('theas-inventory:tab');
   const initial = state.tabs.some((tab) => tab.id === remembered) ? remembered : state.tabs[0]?.id;
 
-  wireEvents();
   await selectTab(initial ?? null);
 }
 

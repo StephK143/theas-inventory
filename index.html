@@ -38,17 +38,19 @@
             <span id="list-total" class="pill"></span>
           </div>
 
-          <table class="inventory">
-            <thead>
-              <tr>
-                <th class="col-name">Thing</th>
-                <th class="col-count">How many</th>
-                <th class="col-note">Notes</th>
-                <th class="col-kill"><span class="sr-only">Remove</span></th>
-              </tr>
-            </thead>
-            <tbody id="items"></tbody>
-          </table>
+          <div class="list-scroll">
+            <table class="inventory">
+              <thead>
+                <tr>
+                  <th class="col-name">Thing</th>
+                  <th class="col-count">How many</th>
+                  <th class="col-note">Notes</th>
+                  <th class="col-kill"><span class="sr-only">Remove</span></th>
+                </tr>
+              </thead>
+              <tbody id="items"></tbody>
+            </table>
+          </div>
 
           <form id="add-item" class="add-row">
             <input
@@ -66,15 +68,24 @@
           <section class="panel chart-panel">
             <div class="panel-head">
               <h2>Pick a chart</h2>
-              <select id="chart-picker" aria-label="Chart type"></select>
+              <div class="chart-controls">
+                <select id="chart-picker" aria-label="Chart type"></select>
+                <select id="chart-limit" aria-label="How many to show">
+                  <option value="10">Top 10</option>
+                  <option value="25">Top 25</option>
+                  <option value="50">Top 50</option>
+                  <option value="0">Show all</option>
+                </select>
+              </div>
             </div>
             <p id="chart-blurb" class="blurb"></p>
-            <div class="chart-frame">
+            <div class="chart-frame" id="chart-frame">
               <canvas id="chart"></canvas>
               <p id="chart-empty" class="empty" hidden>
                 Add a few things to your list and your chart will show up here.
               </p>
             </div>
+            <p id="chart-note" class="chart-note"></p>
           </section>
 
           <section class="panel report-panel">
@@ -109,6 +120,7 @@
       </main>
     </div>
 
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
     <div id="print-sheet" aria-hidden="true"></div>
 
     <script type="module" src="app.js"></script>

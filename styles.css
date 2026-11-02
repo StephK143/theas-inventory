@@ -262,14 +262,27 @@ h3 {
 
 /* ---------- inventory table ---------- */
 
+/* A hundred rows would otherwise run far past the charts on the right. */
+.list-scroll {
+  max-height: min(62vh, 620px);
+  overflow-y: auto;
+  margin: 0 -6px;
+  padding: 0 6px;
+}
+
 .inventory {
   width: 100%;
   border-collapse: collapse;
 }
 
 .inventory th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   text-align: left;
-  padding: 0 8px 8px;
+  padding: 8px 8px 8px;
+  background: var(--paper);
+  box-shadow: inset 0 -1px 0 #eef2f8;
   font-size: 0.75rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -387,7 +400,13 @@ h3 {
 
 /* ---------- chart ---------- */
 
-#chart-picker {
+.chart-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chart-controls select {
   border: 2px solid var(--blue-soft);
   border-radius: 12px;
   padding: 9px 12px;
@@ -397,6 +416,22 @@ h3 {
   color: var(--blue);
   background: #fff;
   cursor: pointer;
+}
+
+#chart-limit {
+  border-color: var(--pink-soft);
+  color: var(--pink);
+}
+
+.chart-note {
+  margin: 12px 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.chart-note:empty {
+  display: none;
 }
 
 .blurb {
@@ -523,6 +558,39 @@ h3 {
   font-size: 0.75rem;
   font-weight: 700;
   color: var(--blue);
+}
+
+/* ---------- toast ---------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  z-index: 50;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 13px 20px;
+  border-radius: 14px;
+  background: var(--blue);
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 12px 30px rgba(35, 49, 74, 0.28);
+}
+
+.toast[data-kind='error'] {
+  background: var(--pink);
+}
+
+.toast[hidden] {
+  display: none;
+}
+
+.add-row button[disabled],
+.btn[disabled] {
+  opacity: 0.55;
+  cursor: progress;
+  transform: none;
 }
 
 /* ---------- print sheet ---------- */
@@ -690,8 +758,9 @@ h3 {
     padding: 0;
   }
 
-  #app {
-    display: none;
+  #app,
+  #toast {
+    display: none !important;
   }
 
   #print-sheet {

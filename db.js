@@ -2,73 +2,93 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 const STARTER_TABS = ['Squishys', 'Halloween Candy'];
 
+const TIMEOUT_MS = 12000;
+
 function supabaseStore(client) {
   const unwrap = ({ data, error }) => {
     if (error) throw new Error(error.message);
     return data;
   };
 
+  // Without this a stalled request never settles, so a save appears to do
+  // nothing at all and the same row gets submitted again.
+  const run = (builder) =>
+    Promise.race([
+      builder.then(unwrap),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('the internet connection is too slow right now')),
+          TIMEOUT_MS,
+        ),
+      ),
+    ]);
+
   return {
     mode: 'cloud',
 
     listTabs: () =>
-      client.from('thea_tabs').select('*').order('sort_order').order('created_at').then(unwrap),
+      run(client.from('thea_tabs').select('*').order('sort_order').order('created_at')),
 
     createTab: (name, color, sortOrder) =>
-      client
-        .from('thea_tabs')
-        .insert({ name, color, sort_order: sortOrder })
-        .select()
-        .single()
-        .then(unwrap),
+      run(
+        client
+          .from('thea_tabs')
+          .insert({ name, color, sort_order: sortOrder })
+          .select()
+          .single(),
+      ),
 
-    updateTab: (id, patch) => client.from('thea_tabs').update(patch).eq('id', id).then(unwrap),
+    updateTab: (id, patch) => run(client.from('thea_tabs').update(patch).eq('id', id)),
 
-    deleteTab: (id) => client.from('thea_tabs').delete().eq('id', id).then(unwrap),
+    deleteTab: (id) => run(client.from('thea_tabs').delete().eq('id', id)),
 
     listItems: (tabId) =>
-      client
-        .from('thea_items')
-        .select('*')
-        .eq('tab_id', tabId)
-        .order('sort_order')
-        .order('created_at')
-        .then(unwrap),
+      run(
+        client
+          .from('thea_items')
+          .select('*')
+          .eq('tab_id', tabId)
+          .order('sort_order')
+          .order('created_at'),
+      ),
 
     createItem: (tabId, name, sortOrder) =>
-      client
-        .from('thea_items')
-        .insert({ tab_id: tabId, name, sort_order: sortOrder })
-        .select()
-        .single()
-        .then(unwrap),
+      run(
+        client
+          .from('thea_items')
+          .insert({ tab_id: tabId, name, sort_order: sortOrder })
+          .select()
+          .single(),
+      ),
 
-    updateItem: (id, patch) => client.from('thea_items').update(patch).eq('id', id).then(unwrap),
+    updateItem: (id, patch) => run(client.from('thea_items').update(patch).eq('id', id)),
 
-    deleteItem: (id) => client.from('thea_items').delete().eq('id', id).then(unwrap),
+    deleteItem: (id) => run(client.from('thea_items').delete().eq('id', id)),
 
-    listHistory: (itemIds) =>
-      itemIds.length === 0
-        ? Promise.resolve([])
-        : client
-            .from('thea_count_log')
-            .select('*')
-            .in('item_id', itemIds)
-            .order('recorded_at')
-            .then(unwrap),
+    // Filtered through the parent rather than by a list of ids, so a hundred
+    // items don't turn into a request URL thousands of characters long.
+    listHistory: (tabId) =>
+      run(
+        client
+          .from('thea_count_log')
+          .select('item_id, count, recorded_at, thea_items!inner(tab_id)')
+          .eq('thea_items.tab_id', tabId)
+          .order('recorded_at'),
+      ),
 
     listReports: (tabId) =>
-      client
-        .from('thea_reports')
-        .select('*')
-        .eq('tab_id', tabId)
-        .order('created_at', { ascending: false })
-        .then(unwrap),
+      run(
+        client
+          .from('thea_reports')
+          .select('*')
+          .eq('tab_id', tabId)
+          .order('created_at', { ascending: false }),
+      ),
 
     createReport: (report) =>
-      client.from('thea_reports').insert(report).select().single().then(unwrap),
+      run(client.from('thea_reports').insert(report).select().single()),
 
-    deleteReport: (id) => client.from('thea_reports').delete().eq('id', id).then(unwrap),
+    deleteReport: (id) => run(client.from('thea_reports').delete().eq('id', id)),
   };
 }
 
@@ -162,10 +182,12 @@ function localStore() {
       save();
     },
 
-    listHistory: async (itemIds) =>
-      clone(state.log.filter((entry) => itemIds.includes(entry.item_id))).sort((a, b) =>
+    listHistory: async (tabId) => {
+      const ids = state.items.filter((item) => item.tab_id === tabId).map((item) => item.id);
+      return clone(state.log.filter((entry) => ids.includes(entry.item_id))).sort((a, b) =>
         a.recorded_at.localeCompare(b.recorded_at),
-      ),
+      );
+    },
 
     listReports: async (tabId) =>
       clone(state.reports.filter((report) => report.tab_id === tabId)).sort((a, b) =>
