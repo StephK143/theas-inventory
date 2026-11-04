@@ -294,6 +294,55 @@ h3 {
   border-top: 1px solid #eef2f8;
 }
 
+/* Negative margin keeps the hit area wide without nudging the heading off the
+   column edge the cells line up against. */
+.sort-btn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: -4px -6px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sort-btn:hover {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.sort-btn:focus-visible {
+  outline: 2px solid var(--blue-bright);
+  outline-offset: 1px;
+}
+
+.sort-btn.is-active {
+  color: var(--blue);
+}
+
+.sort-arrow {
+  font-size: 0.65em;
+}
+
+.sort-tag {
+  font-size: 0.95em;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Both spans are empty until a column is sorted, and an empty flex child would
+   still pay for the gap. */
+.sort-arrow:empty,
+.sort-tag:empty {
+  display: none;
+}
+
 .col-count {
   width: 148px;
 }

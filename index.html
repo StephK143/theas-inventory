@@ -40,10 +40,22 @@
 
           <div class="list-scroll">
             <table class="inventory">
-              <thead>
+              <thead id="inventory-head">
                 <tr>
-                  <th class="col-name">Thing</th>
-                  <th class="col-count">How many</th>
+                  <th class="col-name" aria-sort="none">
+                    <button class="sort-btn" type="button" data-sort="name">
+                      Thing
+                      <span class="sort-arrow" aria-hidden="true"></span>
+                      <span class="sort-tag" aria-hidden="true"></span>
+                    </button>
+                  </th>
+                  <th class="col-count" aria-sort="none">
+                    <button class="sort-btn" type="button" data-sort="count">
+                      How many
+                      <span class="sort-arrow" aria-hidden="true"></span>
+                      <span class="sort-tag" aria-hidden="true"></span>
+                    </button>
+                  </th>
                   <th class="col-note">Notes</th>
                   <th class="col-kill"><span class="sr-only">Remove</span></th>
                 </tr>

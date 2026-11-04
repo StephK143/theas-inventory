@@ -17,6 +17,7 @@ const state = {
   activeTabId: null,
   chartType: CHART_TYPES[0].id,
   chartLimit: 10,
+  sort: { key: null, dir: null },
 };
 
 let chart = null;
@@ -117,14 +118,81 @@ async function loadTabData() {
   state.reports = reports;
 }
 
+/* ---------- sorting ---------- */
+
+// One click on a header gives the answer she usually wants first, a second
+// click flips it, and a third hands back the order she added things in.
+const SORT_CYCLES = {
+  name: [
+    { dir: 'asc', arrow: '▲', tag: 'A→Z', next: 'Sort A to Z' },
+    { dir: 'desc', arrow: '▼', tag: 'Z→A', next: 'Sort Z to A' },
+  ],
+  count: [
+    { dir: 'desc', arrow: '▼', tag: 'most', next: 'Sort by most first' },
+    { dir: 'asc', arrow: '▲', tag: 'fewest', next: 'Sort by fewest first' },
+  ],
+};
+
+const activeStep = () =>
+  SORT_CYCLES[state.sort.key]?.find((step) => step.dir === state.sort.dir) ?? null;
+
+// numeric so "box 10" lands after "box 9", and sensitivity so a stray capital
+// letter doesn't throw a word to the far end of the list.
+const byName = (a, b) =>
+  a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+
+// Sorting is only ever a view: the stored sort_order stays untouched, so "my
+// order" is always recoverable.
+function sortedItems() {
+  const { key, dir } = state.sort;
+  if (!key) return state.items;
+
+  return [...state.items].sort((a, b) => {
+    if (key === 'count') {
+      // Ties fall back to A–Z (never reversed) so a list of equal counts
+      // can't reshuffle itself between renders.
+      return (dir === 'desc' ? b.count - a.count : a.count - b.count) || byName(a, b);
+    }
+    return dir === 'desc' ? byName(b, a) : byName(a, b);
+  });
+}
+
+function renderSortHeaders() {
+  for (const button of document.querySelectorAll('.sort-btn')) {
+    const cycle = SORT_CYCLES[button.dataset.sort];
+    const active = state.sort.key === button.dataset.sort ? activeStep() : null;
+    const upcoming = cycle[cycle.indexOf(active) + 1];
+
+    button.closest('th').setAttribute(
+      'aria-sort',
+      active ? (active.dir === 'asc' ? 'ascending' : 'descending') : 'none',
+    );
+    button.classList.toggle('is-active', Boolean(active));
+    button.querySelector('.sort-arrow').textContent = active?.arrow ?? '';
+    button.querySelector('.sort-tag').textContent = active?.tag ?? '';
+    button.title = upcoming ? upcoming.next : 'Back to the order you added things';
+  }
+}
+
+function cycleSort(key) {
+  const cycle = SORT_CYCLES[key];
+  const current = state.sort.key === key ? activeStep() : null;
+  const next = cycle[cycle.indexOf(current) + 1] ?? null;
+
+  state.sort = next ? { key, dir: next.dir } : { key: null, dir: null };
+  localStorage.setItem('theas-inventory:sort', next ? `${key}:${next.dir}` : '');
+  renderItems();
+}
+
 /* ---------- items ---------- */
 
 function renderItems() {
   const tab = activeTab();
   el('list-title').textContent = tab ? tab.name : 'My list';
   el('list-total').textContent = `${total()} total`;
+  renderSortHeaders();
 
-  el('items').innerHTML = state.items
+  el('items').innerHTML = sortedItems()
     .map(
       (item) => `
       <tr data-id="${item.id}">
@@ -151,6 +219,8 @@ async function setCount(itemId, next) {
   const previous = item.count;
   item.count = count;
   el('list-total').textContent = `${total()} total`;
+  // Deliberately no renderItems() here: while sorted by count, redrawing would
+  // slide the row out from under the +/- button she is still pressing.
   renderChart();
 
   const result = await save(`save ${item.name}`, () =>
@@ -267,7 +337,7 @@ function buildPrintSheet() {
       <table>
         <thead><tr><th>Thing</th><th>How many</th><th>Notes</th></tr></thead>
         <tbody>
-          ${state.items
+          ${sortedItems()
             .map(
               (item) => `<tr>
                 <td>${escape(item.name)}</td>
@@ -382,6 +452,11 @@ function wireEvents() {
     renderItems();
     renderChart();
     field.focus();
+  });
+
+  el('inventory-head').addEventListener('click', (event) => {
+    const button = event.target.closest('.sort-btn');
+    if (button) cycleSort(button.dataset.sort);
   });
 
   el('items').addEventListener('click', async (event) => {
@@ -513,6 +588,11 @@ async function start() {
   const storedLimit = localStorage.getItem('theas-inventory:limit');
   if (storedLimit !== null) state.chartLimit = Number(storedLimit);
   el('chart-limit').value = String(state.chartLimit);
+
+  const [sortKey, sortDir] = (localStorage.getItem('theas-inventory:sort') || '').split(':');
+  if (SORT_CYCLES[sortKey]?.some((step) => step.dir === sortDir)) {
+    state.sort = { key: sortKey, dir: sortDir };
+  }
 
   wireEvents();
 
